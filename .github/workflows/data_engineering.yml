@@ -1,0 +1,76 @@
+name: Feature Engineering
+
+on:
+  workflow_run: # Triggers when Daily Data Collection completes
+    workflows: ["Daily Data Collection"]
+    types:
+      - completed
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  data-preprocessing:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scikit-learn dvc[s3]
+
+      # 4️⃣ Configure AWS credentials (for DVC)
+      - name: Configure AWS credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: echo "AWS credentials configured"
+
+      # 5️⃣ Pull both datasets (from DVC remotes)
+      - name: Pull latest datasets from DVC
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          echo "Pulling raw and engineered data from S3..."
+          dvc pull data/engineered_data.csv.dvc -r s3remote || echo "No raw data found, skipping"
+          dvc pull data/engineered_data.csv.dvc -r s3preproc || echo "No engineered file found, first run"
+
+      # 6️⃣ Run data preprocessing script
+      - name: Run data preprocessing
+        run: python "data_engineering/data_engineering.py"
+
+      # 7️⃣ Track updated engineered_features.csv with DVC
+      - name: Track updated engineered_features.csv with DVC
+        run: |
+          dvc add data/engineered_data.csv
+          git add data/engineered_data.csv.dvc .gitignore
+
+      # 8️⃣ Commit changes to GitHub
+      - name: Commit DVC changes and push to GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git commit -m "Update engineered_features.csv [auto-preprocessing]" || echo "No changes to commit"
+          git push origin main || echo "No push access (check repo permissions)"
+
+      # 9️⃣ Push updated data to S3
+      - name: Push updated features to S3 (DVC)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: dvc push -r s3preproc
