@@ -156,61 +156,55 @@ def fetch_carbon_generation_mix():
 
 # ---------- OCTOPUS ENERGY PRICES (FETCH LAST 3 DAYS) ----------
 def fetch_octopus_prices():
-    try:
-        products_url = "https://api.octopus.energy/v1/products/"
-        response = requests.get(products_url, timeout=10)
-        response.raise_for_status()
+    products_url = "https://api.octopus.energy/v1/products/"
+    response = requests.get(products_url)
+    response.raise_for_status()
 
-        products_data = response.json()
-        agile_products = [
-            p for p in products_data.get("results", []) if "AGILE" in p["code"]
-        ]
-        if not agile_products:
-            raise ValueError("No Agile tariffs found")
+    products_data = response.json()
+    agile_products = [
+        p for p in products_data.get("results", []) if "AGILE" in p["code"]
+    ]
+    if not agile_products:
+        raise ValueError("No Agile tariffs found")
 
-        latest_agile = agile_products[0]
-        product_code = latest_agile["code"]
+    latest_agile = agile_products[0]
+    product_code = latest_agile["code"]
 
-        tariff_code = None
-        for link in latest_agile.get("links", []):
-            if "electricity-tariffs" in link.get("href", ""):
-                tariff_code = link["href"].split("/")[-2]
-                break
-        if not tariff_code:
-            tariff_code = f"E-1R-{product_code}-A"
+    tariff_code = None
+    for link in latest_agile.get("links", []):
+        if "electricity-tariffs" in link.get("href", ""):
+            tariff_code = link["href"].split("/")[-2]
+            break
+    if not tariff_code:
+        tariff_code = f"E-1R-{product_code}-A"
 
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=3)
+    # Fetch last 3 days to ensure we get all yesterday's prices
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=3)
 
-        period_from = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
-        period_to = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+    period_from = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+    period_to = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        rates_url = (
-            f"https://api.octopus.energy/v1/products/{product_code}/"
-            f"electricity-tariffs/{tariff_code}/standard-unit-rates/"
-            f"?period_from={period_from}&period_to={period_to}"
-        )
+    rates_url = (
+        f"https://api.octopus.energy/v1/products/{product_code}/"
+        f"electricity-tariffs/{tariff_code}/standard-unit-rates/"
+        f"?period_from={period_from}&period_to={period_to}"
+    )
 
-        response = requests.get(rates_url, timeout=10)
-        response.raise_for_status()
+    response = requests.get(rates_url)
+    response.raise_for_status()
+    data = response.json().get("results", [])
 
-        data = response.json().get("results", [])
+    df_prices = pd.DataFrame(data)
+    df_prices["datetime"] = pd.to_datetime(df_prices["valid_from"], utc=True)
+    df_prices["retail_price_£_per_kWh"] = df_prices["value_inc_vat"] / 100
 
-        df_prices = pd.DataFrame(data)
-        df_prices["datetime"] = pd.to_datetime(df_prices["valid_from"], utc=True)
-        df_prices["retail_price_£_per_kWh"] = df_prices["value_inc_vat"] / 100
+    # Filter to only yesterday's data
+    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
+    df_prices = df_prices[df_prices["datetime"].dt.date == yesterday]
 
-        yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-        df_prices = df_prices[df_prices["datetime"].dt.date == yesterday]
+    return df_prices[["datetime", "retail_price_£_per_kWh"]]
 
-        return df_prices[["datetime", "retail_price_£_per_kWh"]]
-
-    except Exception as e:
-        print("⚠️ Octopus API failed:", e)
-        print("⚠️ Continuing WITHOUT electricity prices for this day.")
-        return pd.DataFrame(
-            columns=["datetime", "retail_price_£_per_kWh"]
-        )
 
 # ---------- MERGE ALL SOURCES ----------
 def merge_all_sources(weather_df, aqi_df, carbon_df, carbon_gen_df, prices_df):
