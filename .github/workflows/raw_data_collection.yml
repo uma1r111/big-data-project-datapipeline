@@ -32,7 +32,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-1
         run: |
-          dvc pull data/raw_data.csv.dvc -r s3raw || echo "No existing data found, starting fresh"
+          dvc pull data/raw_data.csv.dvc || echo "No existing data found, starting fresh"
 
       - name: Run data collection script
         run: python "raw_data_collection/raw_data.py"
@@ -58,4 +58,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-1
-        run: dvc push -r s3raw
+        run: dvc push
