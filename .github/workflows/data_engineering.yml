@@ -44,10 +44,10 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
         run: |
           echo "Pulling raw data from S3..."
-          dvc pull data/raw_data.csv.dvc -r s3raw || echo "No raw data found"
+          dvc pull data/raw_data.csv.dvc || echo "No raw data found"
 
           echo "Pulling last engineered data from S3..."
-          dvc pull data/engineered_data.csv.dvc -r s3engineered || echo "No previous engineered file found"
+          dvc pull data/engineered_data.csv.dvc -r s3_engineered || echo "No previous engineered file found"
 
       # 6️⃣ Run data preprocessing script
       - name: Run data preprocessing
@@ -75,4 +75,4 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-1
-        run: dvc push -r s3engineered
+        run: dvc push -r s3_engineered
