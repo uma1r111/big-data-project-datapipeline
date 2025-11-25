@@ -1,0 +1,6 @@
+[core]
+    remote = s3_raw
+['remote "s3_raw"']
+    url = s3://s3-bucket-big-data/raw_data_collection
+['remote "s3_engineered"']
+    url = s3://s3-bucket-big-data/data_engineering
