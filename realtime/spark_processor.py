@@ -1,83 +1,57 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, sum as _sum, window
+from pyspark.sql.functions import from_json, col, sum as _sum, avg, window
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, TimestampType
 import redis
 
-# --- Configuration (Internal Docker DNS) ---
-KAFKA_BOOTSTRAP = "kafka:29092"
+KAFKA_BOOTSTRAP = "kafka:29092" 
 TOPIC = "building_energy_stream"
 REDIS_HOST = "redis"
-REDIS_PORT = 6379
 
 def write_to_redis(batch_df, batch_id):
-    """
-    Writes the aggregated results of the micro-batch to Redis.
-    This runs on the worker nodes.
-    """
-    # Create Redis connection inside the function (important for serialization)
     try:
-        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
-        
-        # Collect data to the driver to write simply (for small aggregations this is fine)
+        r = redis.Redis(host=REDIS_HOST, port=6379)
         data = batch_df.collect()
-        
         for row in data:
-            # We overwrite the keys to show "Latest" status on dashboard
             r.set("total_kwh", str(row['total_kwh']))
             r.set("total_cost", str(row['total_cost']))
-            r.set("last_updated", str(row['window']['end']))
-            print(f"🔥 Updated Redis: {row['total_kwh']} kWh")
-            
+            r.set("total_co2", str(row['total_co2']))
+            r.set("avg_carbon_intensity", str(row['avg_carbon_intensity']))
+            print(f"🔥 Batch: {row['total_kwh']:.2f} kWh | £{row['total_cost']:.2f}")
     except Exception as e:
         print(f"Redis Error: {e}")
 
 def run_job():
-    # Initialize Spark
-    spark = SparkSession.builder \
-        .appName("EnergyOptimizationEngine") \
-        .getOrCreate()
-    
+    spark = SparkSession.builder.appName("EnergyEngine").getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
 
-    # Define Schema matching the Producer JSON
     schema = StructType([
-        StructField("timestamp", TimestampType()),
+        StructField("timestamp", StringType()), # Read as string first
         StructField("building_id", StringType()),
         StructField("kwh", FloatType()),
-        StructField("temp", FloatType()),
-        StructField("price", FloatType()),
-        StructField("cost", FloatType())
+        StructField("cost", FloatType()),
+        StructField("co2_kg", FloatType()),
+        StructField("grid_carbon_intensity", FloatType())
     ])
 
-    # 1. Read Stream from Kafka
-    df_raw = spark.readStream \
+    df = spark.readStream \
         .format("kafka") \
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP) \
         .option("subscribe", TOPIC) \
-        .option("startingOffsets", "latest") \
         .load()
 
-    # 2. Parse JSON Payload
-    df_parsed = df_raw.select(
-        from_json(col("value").cast("string"), schema).alias("data")
-    ).select("data.*")
+    # Parse JSON and Cast Timestamp
+    parsed = df.select(from_json(col("value").cast("string"), schema).alias("data")).select("data.*")
+    parsed = parsed.withColumn("timestamp", col("timestamp").cast(TimestampType()))
 
-    # 3. Aggregation Logic (Windowed)
-    # Group by 10-second windows to calculate live total load
-    df_agg = df_parsed \
-        .groupBy(window(col("timestamp"), "10 seconds")) \
+    agg = parsed.groupBy(window(col("timestamp"), "5 seconds")) \
         .agg(
             _sum("kwh").alias("total_kwh"),
-            _sum("cost").alias("total_cost")
+            _sum("cost").alias("total_cost"),
+            _sum("co2_kg").alias("total_co2"),
+            avg("grid_carbon_intensity").alias("avg_carbon_intensity")
         )
 
-    # 4. Write Output to Redis
-    query = df_agg.writeStream \
-        .outputMode("complete") \
-        .foreachBatch(write_to_redis) \
-        .start()
-
-    query.awaitTermination()
+    agg.writeStream.outputMode("complete").foreachBatch(write_to_redis).start().awaitTermination()
 
 if __name__ == "__main__":
     run_job()

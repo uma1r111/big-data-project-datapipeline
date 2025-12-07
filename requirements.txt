@@ -8,3 +8,6 @@ streamlit
 plotly
 python-dotenv
 requests
+streamlit-extras
+streamlit-autorefresh
+influxdb
