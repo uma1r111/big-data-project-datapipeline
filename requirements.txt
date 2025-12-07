@@ -1,0 +1,10 @@
+pandas
+numpy
+kafka-python
+pyspark==3.5.0
+redis
+pymongo
+streamlit
+plotly
+python-dotenv
+requests
