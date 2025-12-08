@@ -52,25 +52,27 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
 
   airflow:
-    build:
-      context: .
-      dockerfile: Dockerfile.airflow
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
-      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - _AIRFLOW_DB_UPGRADE=true
-      - _AIRFLOW_WWW_USER_CREATE=true
-      - _AIRFLOW_WWW_USER_USERNAME=admin
-      - _AIRFLOW_WWW_USER_PASSWORD=admin
-    volumes:
-      - ./airflow_dags:/opt/airflow/dags
-      # Mount the shared Data Lake volume so Airflow can write reports
-      - datalake_volume:/opt/airflow/datalake
-    ports:
-      - "8080:8080"
-    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && airflow webserver & airflow scheduler"
-
+      build:
+        context: .
+        dockerfile: Dockerfile.airflow
+      # --- ADD THIS LINE ---
+      user: "0:0" # Run as the root user (UID 0, GID 0)
+      # ---------------------
+      environment:
+        - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+        - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        - _AIRFLOW_DB_UPGRADE=true
+        - _AIRFLOW_WWW_USER_CREATE=true
+        - _AIRFLOW_WWW_USER_USERNAME=admin
+        - _AIRFLOW_WWW_USER_PASSWORD=admin
+      volumes:
+        - ./airflow_dags:/opt/airflow/dags
+        # Mount the shared Data Lake volume so Airflow can write reports
+        - datalake_volume:/opt/airflow/datalake
+      ports:
+        - "8080:8080"
+      command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && airflow webserver & airflow scheduler"
   spark-master:
     build:
       context: .
