@@ -1,0 +1,4 @@
+FROM bitnami/spark:3.4.1
+USER root
+RUN pip install redis pymongo
+USER 1001

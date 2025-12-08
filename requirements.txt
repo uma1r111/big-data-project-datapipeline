@@ -4,10 +4,9 @@ kafka-python
 pyspark==3.5.0
 redis
 pymongo
-streamlit
+streamlit>=1.27.0
 plotly
 python-dotenv
 requests
 streamlit-extras
 streamlit-autorefresh
-influxdb

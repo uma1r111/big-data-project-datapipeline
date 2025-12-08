@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 from datetime import datetime
+import requests
 
 # --- 1. PAGE CONFIG ---
 st.set_page_config(
@@ -220,7 +221,7 @@ if "active_alerts" not in st.session_state:
     st.session_state.active_alerts = []
 
 # --- 4. REDIS CONNECTION ---
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(host='redis', port=6379, decode_responses=True)
 buildings = ["Building-A-HQ", "Building-B-Lab", "Building-C-Warehouse"]
 
 # --- 5. DATA FETCH & ALERT GENERATION ---
@@ -490,6 +491,11 @@ with st.sidebar:
     st.markdown("### 📊 System Status")
     st.markdown(f'<span class="status-badge status-online">● ONLINE</span>', unsafe_allow_html=True)
     st.caption(f"Last Update: {datetime.now().strftime('%H:%M:%S')}")
+
+
+    st.markdown("---")
+    st.markdown("### 🤖 AI Assistant")
+    st.page_link("pages/EcoBot_AI_Assistant.py", label="Open EcoBot Chat", icon="🤖")
 
 # --- 8. MAIN DASHBOARD ---
 st.title("🏙️ EcoTwin Enterprise | Real-Time Monitoring Dashboard")
@@ -913,13 +919,3 @@ with alert_col:
             """, unsafe_allow_html=True)
             
             st.markdown("<div style='margin: 8px 0;'></div>", unsafe_allow_html=True)
-
-# Footer
-st.markdown("---")
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.caption("🔄 Data refreshes every 5 seconds")
-with col2:
-    st.caption(f"📅 {datetime.now().strftime('%B %d, %Y')}")
-with col3:
-    st.caption(f"⏰ {datetime.now().strftime('%H:%M:%S')}")

@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import random
 from kafka import KafkaProducer
+from kafka.errors import NoBrokersAvailable
 import threading
 import itertools
 
@@ -23,11 +24,41 @@ class DigitalTwin(threading.Thread):
     def __init__(self, building_id, profile):
         threading.Thread.__init__(self)
         self.building_id = building_id
-        self.profile = profile 
-        self.producer = KafkaProducer(
-            bootstrap_servers=KAFKA_BROKER,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
+        self.profile = profile
+        self.producer = None  # Initialize producer as None
+
+        # --- START: ROBUST KAFKA CONNECTION LOGIC ---
+        retries = 10
+        for i in range(retries):
+            try:
+                print(f"[{self.building_id}] Attempting to connect to Kafka at {KAFKA_BROKER} (Attempt {i+1}/{retries})...")
+                self.producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BROKER,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    # Add timeouts to fail faster if Kafka is not available
+                    api_version_auto_timeout_ms=5000,
+                    request_timeout_ms=10000,
+                    # Security protocol might be needed in some environments, though PLAINTEXT is default
+                    # security_protocol='PLAINTEXT'
+                )
+                print(f"✅ [{self.building_id}] Successfully connected to Kafka.")
+                break  # Exit the loop if connection is successful
+            except NoBrokersAvailable:
+                print(f"⚠️ [{self.building_id}] Kafka connection failed: NoBrokersAvailable. Broker may not be ready.")
+                if i < retries - 1:
+                    print("Retrying in 5 seconds...")
+                    time.sleep(5)
+                else:
+                    print(f"❌ [{self.building_id}] Could not connect to Kafka after {retries} attempts. Exiting thread.")
+            except Exception as e:
+                print(f"⚠️ [{self.building_id}] An unexpected error occurred: {e}")
+                if i < retries - 1:
+                    print("Retrying in 5 seconds...")
+                    time.sleep(5)
+                else:
+                    print(f"❌ [{self.building_id}] Could not connect to Kafka after {retries} attempts. Exiting thread.")
+        # --- END: ROBUST KAFKA CONNECTION LOGIC ---
+
         # Physics State
         self.indoor_temp = 21.0
         self.occupancy = 0
@@ -151,6 +182,10 @@ class DigitalTwin(threading.Thread):
         return {**elec, **ieq, **mech, **net, **energy, **structure, **weather}
 
     def run(self):
+        # Gracefully exit the thread if producer was never created
+        if not self.producer:
+            return
+
         print(f"🚀 Full-Stack Twin Online: {self.building_id}")
         local_stream = itertools.cycle(df.to_dict('records'))
         
